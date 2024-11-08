@@ -1,0 +1,7 @@
+Environment:
+  G: 9.81
+  M: .01
+  MAX_THRUST: 1.0
+  CTRL_TIMESTEP: 0.01
+
+
