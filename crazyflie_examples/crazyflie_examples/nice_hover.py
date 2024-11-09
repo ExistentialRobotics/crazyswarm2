@@ -12,8 +12,12 @@ def main():
     timeHelper = swarm.timeHelper
     allcfs = swarm.allcfs
     print("here 2")
-
+    
+    for cf in allcfs.crazyflies:	
+    	print(cf.uri)
+	
     allcfs.takeoff(targetHeight=Z, duration=1.0+Z)
+    
     timeHelper.sleep(1.5+Z)
     print("here 3")
     for cf in allcfs.crazyflies:
@@ -34,6 +38,7 @@ def main():
 
     allcfs.land(targetHeight=0.02, duration=1.0+Z)
     timeHelper.sleep(1.0+Z)
+    
 
 
 if __name__ == '__main__':
