@@ -76,7 +76,6 @@ class YO_Controller:
         cf_input = self.convert_to_cf_input(u)
         return cf_input
     
-
     def convert_to_cf_input(self, u, x: YOState):
         yank, w_x, w_y, w_z = u
         dt = self.env.CTRL_TIMESTEP
@@ -85,12 +84,3 @@ class YO_Controller:
         pitch = x.p + w_y * dt
 
         return [roll, pitch, w_z, thrust]
-
-
-def main():
-    rclpy.init()
-    node = YO_Controller()
-    rclpy.spin(node)
-
-
-

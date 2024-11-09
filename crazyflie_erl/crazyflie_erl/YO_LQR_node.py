@@ -3,7 +3,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist, PoseStamped
 from motion_capture_tracking_interfaces.msg import NamedPoseArray
-from YO_Controller import YO_Controller
+from YO_Controller import YOState, YO_Controller
 import time
 import numpy as np
 import tf_transformations
@@ -56,7 +56,8 @@ class Crazyswarm2ERLCommander(Node):
 
         if self.cf_locked:
             self.cf_locked = False
-            for i in range(5):
+            self.last_pos = curr_pos
+            for i in range(5):     # needed to switch to our controller 
                 self.publisher.publish(control_msg)
 
         ori = tf_transformations.euler_from_quaternion([msg.pose.orientation.x,
@@ -67,7 +68,7 @@ class Crazyswarm2ERLCommander(Node):
                              msg.pose.position.z])
         curr_vel = (curr_pos - self.last_pos)/self.dt
         
-        state = [*ori,self.last_thrust,*curr_vel,*curr_pos]
+        state = YOState(*ori,self.last_thrust,*curr_vel,*curr_pos)
         command = self.controller.get_singlecf_control(state)
 
         control_msg.linear.y, control_msg.linear.x, control_msg.angular.z = command[:-1]
@@ -79,7 +80,6 @@ class Crazyswarm2ERLCommander(Node):
         self.last_pos = curr_pos
         self.last_thrust = control_msg.linear.z
         
-
 
 
 def main(args=None):
