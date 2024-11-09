@@ -72,8 +72,8 @@ class YO_Controller:
         self.lqr.set_desired_trajectory(None, pos, vel, acc, yaw, omega)
 
     def get_singlecf_control(self, x: YOState):
-        _, u = self.lqr.compute(x=x, skip_low_level=True)
-        cf_input = self.convert_to_cf_input(u)
+        _, u = self.lqr.compute(x=x.get_state_vec(), skip_low_level=True)
+        cf_input = self.convert_to_cf_input(u, x)
         return cf_input
     
     def convert_to_cf_input(self, u, x: YOState):

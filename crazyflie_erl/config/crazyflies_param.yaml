@@ -1,2 +1,3 @@
-Crazyflies:
-  num_robots: 5
+CS2ERLCommander_node:
+  ros__parameters:
+    num_robots: 5
