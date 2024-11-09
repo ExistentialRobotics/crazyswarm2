@@ -1,6 +1,6 @@
 # named list of all robots
 robots:
-  cf231:
+  cf232:
     enabled: true
     uri: radio://0/80/2M/E7E7E7E7E2
     initial_position: [0.0, 0.0, 0.0]
@@ -20,7 +20,7 @@ robots:
 robot_types:
   cf21:
     motion_capture:
-      enabled: false
+      enabled: true
       # only if enabled; see motion_capture.yaml
       marker: default_single_marker
       dynamics: default
