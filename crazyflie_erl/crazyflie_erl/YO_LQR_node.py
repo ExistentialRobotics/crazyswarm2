@@ -6,8 +6,7 @@ from motion_capture_tracking_interfaces.msg import NamedPoseArray
 from YO_Controller import YOState, YO_Controller
 import time
 import numpy as np
-import tf_transformations
-
+from transforms3d.euler import quat2euler
 
 #################################################################
 ##        Control node that commands all the crazyflies        ##
@@ -60,12 +59,15 @@ class Crazyswarm2ERLCommander(Node):
             for i in range(5):     # needed to switch to our controller 
                 self.publisher.publish(control_msg)
 
-        ori = tf_transformations.euler_from_quaternion([msg.pose.orientation.x,
-                                                        msg.pose.orientation.y,
-                                                        msg.pose.orientation.z])
+        ori = quat2euler([msg.pose.orientation.x,
+                          msg.pose.orientation.y,
+                          msg.pose.orientation.z,
+                          msg.pose.orientation.w])
+        
         curr_pos = np.array([msg.pose.position.x,
                              msg.pose.position.y,
                              msg.pose.position.z])
+        
         curr_vel = (curr_pos - self.last_pos)/self.dt
         
         state = YOState(*ori,self.last_thrust,*curr_vel,*curr_pos)
