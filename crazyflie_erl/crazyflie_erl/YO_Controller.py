@@ -46,22 +46,7 @@ class YO_Controller:
         self.robot_idx = 0
         yo_ctrl = YankOmegaController(env)
 
-        # Brysons rule, essentially set Rii to be 1/(u^2_i) where u_i is the max input for the ith value)
-        max_yank = (env.MAX_THRUST / env.CTRL_TIMESTEP ) / max_yank_steps # guess? don't have an intuition for yank yet
-
-        rflat = [1 / (max_yank ** 2), 1 / (max_pitch_roll_rate_error ** 2), 1 / (max_pitch_roll_rate_error ** 2),
-                1 / (max_yaw_rate_error ** 2)]
-        R = np.diag(rflat)
-
-        max_thrust = env.MAX_THRUST - env.M* env.G #max thrust in equilibrium input
-
-        # stack into Q in order of state x=[r, p, y, T, vx, vy, vz, px, py, pz] (T is thrust)
-        qflat = [1 / (max_pitch_roll_error ** 2), 1 / (max_pitch_roll_error ** 2), 1 / (max_yaw_error ** 2),
-                1/(max_thrust**2), 1 / (max_vel_error ** 2), 1 / (max_vel_error ** 2), 1 / (max_vel_error ** 2),
-                1 / (max_pos_error ** 2), 1 / (max_pos_error ** 2), 1 / (max_pos_error ** 2)]
-        Q = np.diag(qflat)
-
-
+        Q,R = self.update_lqr_params(params)
         self.lqr = LQRYankOmegaController(self.env, self.yo_model, yo_ctrl, Q=Q, R=R)
         print(Q)
         print(R)
@@ -70,6 +55,33 @@ class YO_Controller:
         acc = [0,0,0] #these are ignored for YO controller
         omega = [0,0,0]
         self.lqr.set_desired_trajectory(None, pos, vel, acc, yaw, omega)
+
+
+    def update_lqr_params(self, params, apply=False):
+        [G,M,MAX_THRUST,CTRL_TIMESTEP,
+            max_yank_steps,max_pitch_roll_rate_error,max_yaw_rate_error,
+            max_vel_error,max_pos_error,max_yaw_error,max_pitch_roll_error] = params  
+                # Brysons rule, essentially set Rii to be 1/(u^2_i) where u_i is the max input for the ith value)
+        max_yank = (MAX_THRUST / CTRL_TIMESTEP ) / max_yank_steps # guess? don't have an intuition for yank yet
+
+        rflat = [1 / (max_yank ** 2), 1 / (max_pitch_roll_rate_error ** 2), 1 / (max_pitch_roll_rate_error ** 2),
+                1 / (max_yaw_rate_error ** 2)]
+        R = np.diag(rflat)
+
+        lqr_max_thrust = MAX_THRUST - M * G #max thrust in equilibrium input
+
+        # stack into Q in order of state x=[r, p, y, T, vx, vy, vz, px, py, pz] (T is thrust)
+        qflat = [1 / (max_pitch_roll_error ** 2), 1 / (max_pitch_roll_error ** 2), 1 / (max_yaw_error ** 2),
+                1/(lqr_max_thrust**2), 1 / (max_vel_error ** 2), 1 / (max_vel_error ** 2), 1 / (max_vel_error ** 2),
+                1 / (max_pos_error ** 2), 1 / (max_pos_error ** 2), 1 / (max_pos_error ** 2)]
+        Q = np.diag(qflat)
+
+        if apply:
+            self.lqr.Q = Q
+            self.lqr.R = R
+            self.lqr.compute_gain_matrix()
+        else:
+            return Q,R
 
     def get_singlecf_control(self, x: YOState):
         _, u = self.lqr.compute(x=x.get_state_vec(), skip_low_level=True)
