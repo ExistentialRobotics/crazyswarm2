@@ -87,9 +87,12 @@ class Crazyswarm2ERLCommander(Node):
 
     def land(self, btn):
         control_msg = Twist()
-        control_msg.linear.z = 0.0
-        self.cmd_publisher.publish(control_msg)
-        self.get_logger().info("Landing")
+
+        self.get_logger().info("Landing") 
+        #blocking call to send zero motor rpm
+        while(True):
+            control_msg.linear.z = 0.0
+            self.cmd_publisher.publish(control_msg)
     
 
     def reload_params(self, btn):
@@ -130,7 +133,7 @@ class Crazyswarm2ERLCommander(Node):
 
     def joy_setpoint_callback(self, pos, vel):
         self.setpoint = (pos, vel, 0)
-        self.get_logger().info(f"Setpoint: {self.setpoint}")
+        # self.get_logger().info(f"Setpoint: {self.setpoint}")
         self.controller.update_setpoint(pos=pos, vel=vel, yaw=0)
     
     def callback(self,msg:PoseStamped):
@@ -147,6 +150,8 @@ class Crazyswarm2ERLCommander(Node):
             self.last_pos = np.array([msg.pose.position.x,msg.pose.position.y,msg.pose.position.z])
             for i in range(5):     # needed to switch to our controller 
                 self.cmd_publisher.publish(control_msg)
+            self.last_time = time.time()
+            return
 
         # deltaR = quat2Mat(curQ).T @ quat2Mat(lastQ)
         # delta_euler = mat2Euler(deltaR)
@@ -159,7 +164,7 @@ class Crazyswarm2ERLCommander(Node):
         
         ori = quat2euler(quat)
         
-        self.get_logger().debug(f"Ori: {ori} quat: {quat}")
+        # self.get_logger().debug(f"Ori: {ori} quat: {quat}")
 
         curr_pos = np.array([msg.pose.position.x,
                              msg.pose.position.y,
@@ -168,19 +173,23 @@ class Crazyswarm2ERLCommander(Node):
         curr_vel = (curr_pos - self.last_pos) / self.dt
         
         state = YOState(*ori,self.last_thrust,*curr_vel,*curr_pos)
-        command = self.controller.get_singlecf_control(state)
+        dt = time.time() - self.last_time
+        command = self.controller.get_singlecf_control(state, dt)
         cf_thrust = max(min(self.N2cfThrust_conv_factor * command[-1], 60000.0), 0.0)
-
-        control_msg.linear.y, control_msg.linear.x, control_msg.angular.z = command[:-1]
+        roll, pitch, yaw_rate = (180.0/np.pi)*command[:-1] #convert to degrees for crazyflie library
+        pitch = max(min(pitch, 30.0), -30.0)
+        roll = max(min(roll, 30.0), -30.0)
+        control_msg.linear.y, control_msg.linear.x, control_msg.angular.z = (roll, pitch, -yaw_rate)
         control_msg.linear.z = cf_thrust
-
+ 
         self.cmd_publisher.publish(control_msg)
 
+        deg_ori = (180.0/np.pi)*np.array(ori)
         # self.get_logger().info(f'Published {control_msg} at time {time.time()}')
-
+        self.get_logger().info(f'cmd (pitch, roll): ({pitch:.2f} {roll:.2f}, {yaw_rate:.2f}) \t euler: ({deg_ori[0]:.2f} {deg_ori[1]:.2f} {deg_ori[2]:.2f})')
         self.last_pos = curr_pos
         self.last_thrust = float(cf_thrust) / self.N2cfThrust_conv_factor
-        
+        self.last_time = time.time()
 
 def main(args=None):
     rclpy.init(args=args)

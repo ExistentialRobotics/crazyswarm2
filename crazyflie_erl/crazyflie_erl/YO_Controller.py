@@ -83,16 +83,17 @@ class YO_Controller:
         else:
             return Q,R
 
-    def get_singlecf_control(self, x: YOState):
+    def get_singlecf_control(self, x: YOState, dt=None):
         _, u = self.lqr.compute(x=x.get_state_vec(), skip_low_level=True)
-        cf_input = self.convert_to_cf_input(u, x)
+        cf_input = self.convert_to_cf_input(u, x, dt)
         return cf_input
     
-    def convert_to_cf_input(self, u, x: YOState):
+    def convert_to_cf_input(self, u, x: YOState, dt=None):
         yank, w_x, w_y, w_z = u
-        dt = self.env.CTRL_TIMESTEP
-        thrust = x.T + yank*dt 
-        roll = x.r + w_x * dt
+        if dt is None:
+            dt = self.env.CTRL_TIMESTEP
+        thrust = x.T + yank * dt 
+        roll = x.r + w_x * dt 
         pitch = x.p + w_y * dt
-
-        return [roll, pitch, w_z, thrust]
+        
+        return np.array([roll, pitch, w_z, thrust])
