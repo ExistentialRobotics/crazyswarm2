@@ -8,7 +8,7 @@ import time
 import numpy as np
 import yaml
 from transforms3d.euler import quat2euler
-
+from trajectories import CircleTrajectory, LineTrajectory, CompoundTrajectory
 from joystick import XboxHandler, BUTTON_MAP, AXES_MAP, XboxJoyMessage
 from joystick import JoySetpointControl
 
@@ -32,6 +32,7 @@ class Crazyswarm2ERLCommander(Node):
         self.joy_handler = XboxHandler(self)
         self.joy_handler.register_callback(self.land, buttons=(BUTTON_MAP["Y"],))
         self.joy_handler.register_callback(self.reload_params, buttons=(BUTTON_MAP["Squares"],))
+        self.joy_handler.register_callback(self.track_circle_traj, buttons=(BUTTON_MAP["X"],))
         self.get_logger().info("Created Xbox Handler")
         
 
@@ -41,6 +42,12 @@ class Crazyswarm2ERLCommander(Node):
         self.last_thrust = 0
         self.last_pos = np.zeros(3)
         self.setpoint = None
+        radius = 0.5
+        vel = 0.25
+        self.circle_traj = CircleTrajectory(r=radius, v=vel)
+        self.from_hover_traj = LineTrajectory(start=np.array([0,0,1]), end=np.array([radius,0,1]), speed=vel)
+        self.traj = CompoundTrajectory([self.from_hover_traj, self.circle_traj])
+        self.traj_time_start = None
 
 
     def define_controller_ros(self):
@@ -85,16 +92,35 @@ class Crazyswarm2ERLCommander(Node):
         self.N2cfThrust_conv_factor = CF_HOVER_THRUST/(M*G)
         self.dt = CTRL_TIMESTEP
 
-    def land(self, btn):
-        control_msg = Twist()
 
-        self.get_logger().info("Landing") 
-        #blocking call to send zero motor rpm
-        while(True):
-            control_msg.linear.z = 0.0
-            self.cmd_publisher.publish(control_msg)
+    def land(self, btn):
+        if btn:
+            control_msg = Twist()
+
+            self.get_logger().info("Landing") 
+            #blocking call to send zero motor rpm
+            while(True):
+                control_msg.linear.z = 0.0
+                self.cmd_publisher.publish(control_msg)
     
 
+    def track_circle_traj(self, btn):
+        # self.get_logger().info("Tracking circle trajectory")
+        #go from hover position 
+        if btn:
+            if self.traj_time_start is None:
+                self.traj_time_start = time.time()
+                return
+            t = time.time() - self.traj_time_start
+            pos, vel, acc, yaw, omega_yaw = self.traj(t)
+            self.joy_setpoint_callback(pos, vel)
+            if t > self.traj.get_total_time():
+                self.traj_time_start = None
+                self.joy_setpoint_callback(np.array([0,0,1]), np.zeros((3,)))
+                return
+        
+        
+                                       
     def reload_params(self, btn):
         self.get_logger().info("Reloading params")
         self.define_controller_yaml()
@@ -186,7 +212,8 @@ class Crazyswarm2ERLCommander(Node):
 
         deg_ori = (180.0/np.pi)*np.array(ori)
         # self.get_logger().info(f'Published {control_msg} at time {time.time()}')
-        self.get_logger().info(f'cmd (pitch, roll): ({pitch:.2f} {roll:.2f}, {yaw_rate:.2f}) \t euler: ({deg_ori[0]:.2f} {deg_ori[1]:.2f} {deg_ori[2]:.2f})')
+        # self.get_logger().info(f'cmd (pitch, roll): ({pitch:.2f} {roll:.2f}, {yaw_rate:.2f}) \t euler: ({deg_ori[0]:.2f} {deg_ori[1]:.2f} {deg_ori[2]:.2f})')
+        self.get_logger().info(f'pos: {curr_pos} vel: {curr_vel} thrust: {cf_thrust}')
         self.last_pos = curr_pos
         self.last_thrust = float(cf_thrust) / self.N2cfThrust_conv_factor
         self.last_time = time.time()

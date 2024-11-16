@@ -1,7 +1,7 @@
 CS2ERLCommander_node:
   ros__parameters:
     max_vel_error: .05
-    max_pos_error: .05 
+    max_pos_error: .025  
     max_yaw_error: 0.078539816
     max_pitch_roll_error: 0.157079632
     max_yank_steps: 200 # max_yank = (env.MAX_THRUST/env.CTRL_TIMESTEP)/max_yank_steps

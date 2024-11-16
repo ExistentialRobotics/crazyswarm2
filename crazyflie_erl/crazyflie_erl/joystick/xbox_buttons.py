@@ -13,6 +13,7 @@ BUTTON_MAP = {
         "LStick": 9,
         "RStick": 10
     }
+
 INV_BUTTON_MAP = {v: k for k, v in BUTTON_MAP.items()}
 #the axes are all x left is positive, y up is positive, the triggers are 1 at rest, -1 at full press
 AXES_MAP = {
@@ -23,6 +24,15 @@ AXES_MAP = {
         "left_trigger": 2,
         "right_trigger": 5
     }
+
+#TO IMPLEMENT LATER
+DPAD_BTN_MAP = {
+    "up": 7,
+    "down": -7,
+    "left": 6,
+    "right": -6
+}
+
 INV_AXES_MAP = {v: k for k, v in AXES_MAP.items()}
 #simple wrapper around JoystickMessage to make it easier to access the buttons and axes
 class XboxJoyMessage:
