@@ -19,12 +19,10 @@ class JoySetpointControl:
         # if any of the right stick is moved, or the left vertical is moved while A is pressed, update the setpoint
         handler.register_gated_axis_callback(self.setpoint_callback, (AXES_MAP["RStickX"], AXES_MAP["RStickY"], AXES_MAP["LStickY"]), (BUTTON_MAP["LB"],))
         handler.register_callback(self.reset_setpoint, buttons=(BUTTON_MAP["RB"],))
-        handler.register_callback(self.toggle_goal_vel, buttons=(BUTTON_MAP["A"],))
         handler.register_full_dpad_callback(self.dpad_callback)
         self.SCALE_FACTOR = 0.5
         self.last_time = None
-        self.use_goal_vel = False
-        self.goal_vel = np.array([0.0,0.0,0.0])
+        self.goal_vel = np.array([0.0, 0.0, 0.0])
         self.callback = callback
     
 
@@ -36,11 +34,6 @@ class JoySetpointControl:
             if self.callback is not None:
                 self.callback(self.setpoint, self.goal_vel)
 
-
-    def toggle_goal_vel(self, button):
-        if button: # toggle on rising edge
-            self.use_goal_vel = not self.use_goal_vel
-        print(f"Use goal vel: {self.use_goal_vel}")
 
     def dpad_callback(self, up, down, left, right):
         #dpad will move the setpoint on xy plane
@@ -61,9 +54,11 @@ class JoySetpointControl:
         if self.callback is not None:
             self.callback(self.setpoint, self.goal_vel)
 
+    
     def get_current_goal(self):
         return self.setpoint, self.goal_vel
     
+
     def setpoint_callback(self, rx_axis, ry_axis, ly_axis):
         # map the joystick values to the setpoint
         vx = ry_axis
@@ -79,12 +74,9 @@ class JoySetpointControl:
         dt = time_now - self.last_time
         
         #move the setpoint by the joystick values by some scaled dt
-        self.setpoint += self.SCALE_FACTOR * np.array([vx,vy,vz]) * dt
+        self.setpoint += self.SCALE_FACTOR * np.array([vx, vy, vz]) * dt
 
-        if self.use_goal_vel:
-            self.goal_vel = self.SCALE_FACTOR * np.array([vx,vy,vz])
-        else:
-            self.goal_vel = np.array([0,0,0])
+        self.goal_vel = np.array([0, 0, 0])
 
         self.last_time = time_now
 

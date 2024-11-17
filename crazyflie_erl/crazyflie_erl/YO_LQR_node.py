@@ -11,6 +11,8 @@ from transforms3d.euler import quat2euler
 from trajectories import CircleTrajectory, LineTrajectory, CompoundTrajectory, WaitTrajectory
 from joystick import XboxHandler, BUTTON_MAP, AXES_MAP, XboxJoyMessage
 from joystick import JoySetpointControl
+from FedCE import FederatedLearning
+
 
 #################################################################
 ##        Control node that commands all the crazyflies        ##
@@ -35,6 +37,7 @@ class Crazyswarm2ERLCommander(Node):
         self.joy_handler.register_callback(self.land, buttons=(BUTTON_MAP["Y"],))
         self.joy_handler.register_callback(self.reload_params, buttons=(BUTTON_MAP["Squares"],))
         self.joy_handler.register_callback(self.track_circle_traj, buttons=(BUTTON_MAP["X"],))
+        self.joy_handler.register_callback(self.start_recording, buttons=(BUTTON_MAP["A"],))
         self.get_logger().info("Created Xbox Handler")
         
 
@@ -63,6 +66,10 @@ class Crazyswarm2ERLCommander(Node):
         
         self.traj_time_start = None
         self.trajectory_following = False
+
+        self.record_transitions = False
+        self.transition_data = []
+        self.fed_learning = FederatedLearning([self.controller.lin_model], self.controller.env, num_drones=1)
 
 
     def define_controller_ros(self):
@@ -98,13 +105,17 @@ class Crazyswarm2ERLCommander(Node):
                     max_yank_steps,max_pitch_roll_rate_error,max_yaw_rate_error,
                     max_vel_error,max_pos_error,max_yaw_error,max_pitch_roll_error]
 
-        self.controller = YO_Controller(c_params)
+
+
+        CF_HOVER_THRUST = self.get_parameter('CF_HOVER_THRUST').get_parameter_value().integer_value
+        self.N2cfThrust_conv_factor = CF_HOVER_THRUST/(M*G)
+
+        self.controller = YO_Controller(c_params, N2cfThrust_conv_factor=self.N2cfThrust_conv_factor)
 
         #assume linear releationship between thrust in Newtons and cf thrust units
         # hover_thrust_int = mg
         # 42000/.027*9,81
-        CF_HOVER_THRUST = self.get_parameter('CF_HOVER_THRUST').get_parameter_value().integer_value
-        self.N2cfThrust_conv_factor = CF_HOVER_THRUST/(M*G)
+        
         self.dt = CTRL_TIMESTEP
 
 
@@ -118,6 +129,11 @@ class Crazyswarm2ERLCommander(Node):
                 control_msg.linear.z = 0.0
                 self.cmd_publisher.publish(control_msg)
     
+    def toggle_recording(self, btn):
+        if btn:
+            self.record_transitions = not self.record_transitions
+            self.get_logger().info(("Started" if self.record_transitions else "Stopped ") + f" recording transitions")
+        
 
     def track_circle_traj(self, btn):
         # self.get_logger().info("Tracking circle trajectory")
@@ -141,6 +157,14 @@ class Crazyswarm2ERLCommander(Node):
         self.get_logger().info("Reloading params")
         self.define_controller_yaml()
         self.get_logger().info("Reloaded params")
+        #for now overload this with saving the current model and data
+        if btn:
+            self.get_logger().info(self.fed_learning.theta_str())
+            self.fed_learning.save_theta()
+            #save the transition data to a file
+            np.save("transition_data.npy", self.transition_data)
+            
+
 
     def define_controller_yaml(self):
         #load the yaml file
@@ -211,6 +235,7 @@ class Crazyswarm2ERLCommander(Node):
                 self.trajectory_following = False
                 self.traj_time_start = None
         
+
         quat = [msg.pose.orientation.w,
                 msg.pose.orientation.x,
                 msg.pose.orientation.y,
@@ -229,11 +254,11 @@ class Crazyswarm2ERLCommander(Node):
         state = YOState(*ori,self.last_thrust,*curr_vel,*curr_pos)
         dt = time.time() - self.last_time
         command = self.controller.get_singlecf_control(state, dt)
-        cf_thrust = max(min(self.N2cfThrust_conv_factor * command[-1], 60000.0), 0.0)
-        roll, pitch, yaw_rate = (180.0/np.pi)*command[:-1] #convert to degrees for crazyflie library
-        pitch = max(min(pitch, 30.0), -30.0)
-        roll = max(min(roll, 30.0), -30.0)
-        control_msg.linear.y, control_msg.linear.x, control_msg.angular.z = (roll, pitch, -yaw_rate)
+
+        
+
+        roll,pitch,yaw_rate,cf_thrust = command
+        control_msg.linear.y, control_msg.linear.x, control_msg.angular.z = (roll, pitch, yaw_rate)
         control_msg.linear.z = cf_thrust
  
         self.cmd_publisher.publish(control_msg)
@@ -246,6 +271,15 @@ class Crazyswarm2ERLCommander(Node):
         goal_msg.pose.position.z = self.setpoint[0][2]
 
         self.goal_pose_publisher.publish(goal_msg)
+
+        if self.record_transitions:
+            u = self.controller.cf_input_to_u(command)
+            # test how long the update step takes
+            start_time = time.time()
+            phis, etp1 = self.fed_learning.update([state], [self.fed_learning.make_desired_state(pos=self.setpoint[0], vel=self.setpoint[1], yaw=self.setpoint[2])], [u])
+            end_time = time.time()
+            self.get_logger().info(f"Update took {(end_time-start_time):.5f} seconds")
+            self.transition_data.append((state, u, phis, etp1))
 
         self.last_pos = curr_pos
         self.last_thrust = float(cf_thrust) / self.N2cfThrust_conv_factor

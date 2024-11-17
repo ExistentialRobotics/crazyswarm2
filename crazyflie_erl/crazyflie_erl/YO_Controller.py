@@ -91,7 +91,7 @@ class YOState:
 
 class YO_Controller:
 
-    def __init__(self,params): 
+    def __init__(self,params, N2cfThrust_conv_factor=1.0): 
         [G,M,MAX_THRUST,CTRL_TIMESTEP,
         max_yank_steps,max_pitch_roll_rate_error,max_yaw_rate_error,
         max_vel_error,max_pos_error,max_yaw_error,max_pitch_roll_error] = params       
@@ -104,6 +104,7 @@ class YO_Controller:
 
         Q,R = self.update_lqr_params(params)
         self.lqr = LQRYankOmegaController(self.env, self.yo_model, yo_ctrl, Q=Q, R=R)
+        self.N2cfThrust_conv_factor = N2cfThrust_conv_factor
         print(Q)
         print(R)
 
@@ -146,10 +147,31 @@ class YO_Controller:
     
     def convert_to_cf_input(self, u, x: YOState, dt=None):
         yank, w_x, w_y, w_z = u
+        w_z = 0 #TODO investigate, ignore yaw rate for now
         if dt is None:
             dt = self.env.CTRL_TIMESTEP
         thrust = x.T + yank * dt 
         roll = x.r + w_x * dt 
         pitch = x.p + w_y * dt
-        w_z = 0 #TODO investigate, ignore yaw rate for now
-        return np.array([roll, pitch, w_z, thrust])
+        yaw_rate = -w_z
+       
+        cf_thrust = max(min(self.N2cfThrust_conv_factor * thrust, 60000.0), 0.0)
+        roll, pitch, yaw_rate = (180.0/np.pi)*np.array([roll, pitch, yaw_rate]) #convert to degrees for crazyflie library
+        pitch = max(min(pitch, 30.0), -30.0)
+        roll = max(min(roll, 30.0), -30.0)
+
+        return np.array([roll, pitch, yaw_rate, cf_thrust])
+
+    def cf_input_to_u(self, cf_input, x, dt=None):
+        if dt is None:
+            dt = self.env.CTRL_TIMESTEP
+        roll, pitch, yaw_rate, cf_thrust = cf_input
+        roll_rad = (np.pi/180.0) * roll
+        pitch_rad = (np.pi/180.0) * pitch
+        yaw_rate_rad = -yaw_rate * (np.pi/180.0)
+        thrust = cf_thrust / self.N2cfThrust_conv_factor
+        yank = (thrust - x.T) / dt
+        w_x = (roll_rad - x.r) / dt
+        w_y = (pitch_rad - x.p) / dt
+        w_z = yaw_rate_rad
+        return np.array([yank, w_x, w_y, w_z])
