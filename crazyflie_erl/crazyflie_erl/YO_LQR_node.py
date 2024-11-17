@@ -8,7 +8,7 @@ import time
 import numpy as np
 import yaml
 from transforms3d.euler import quat2euler
-from trajectories import CircleTrajectory, LineTrajectory, CompoundTrajectory
+from trajectories import CircleTrajectory, LineTrajectory, CompoundTrajectory, WaitTrajectory
 from joystick import XboxHandler, BUTTON_MAP, AXES_MAP, XboxJoyMessage
 from joystick import JoySetpointControl
 
@@ -28,8 +28,10 @@ class Crazyswarm2ERLCommander(Node):
         self.pose_subscriber = self.create_subscription(PoseStamped, '/cf231/pose', self.callback, qos_profile)
         self.setpoint_subscriber = self.create_subscription(Twist, '/cf231/setpoint', self.setpoint_callback, qos_profile)
         self.cmd_publisher = self.create_publisher(Twist, '/cf231/cmd_vel_legacy', 10)
-        
+        self.goal_pose_publisher = self.create_publisher(PoseStamped, '/cf231/goal_pose', 10)
+
         self.joy_handler = XboxHandler(self)
+
         self.joy_handler.register_callback(self.land, buttons=(BUTTON_MAP["Y"],))
         self.joy_handler.register_callback(self.reload_params, buttons=(BUTTON_MAP["Squares"],))
         self.joy_handler.register_callback(self.track_circle_traj, buttons=(BUTTON_MAP["X"],))
@@ -43,11 +45,24 @@ class Crazyswarm2ERLCommander(Node):
         self.last_pos = np.zeros(3)
         self.setpoint = None
         radius = 0.5
-        vel = 0.25
-        self.circle_traj = CircleTrajectory(r=radius, v=vel)
+        vel = 1.25 #m/s
         self.from_hover_traj = LineTrajectory(start=np.array([0,0,1]), end=np.array([radius,0,1]), speed=vel)
-        self.traj = CompoundTrajectory([self.from_hover_traj, self.circle_traj])
+        self.circle_traj = CircleTrajectory(center=np.array([0,0,1]) ,r=radius, v=vel)
+        self.hold_traj = WaitTrajectory(position=np.array([radius,0,1]), duration=2)
+        self.to_center_traj = LineTrajectory(start=np.array([radius,0,1]), end=np.array([0,0,1]), speed=vel)
+
+        # self.traj = CompoundTrajectory([self.from_hover_traj, self.circle_traj, self.hold_traj, self.to_center_traj])
+
+        #create square trajectory for testing
+        side_length = 1.0
+        self.edge1 = LineTrajectory(start=np.array([0,0,1]), end=np.array([side_length,0,1]), speed=vel)
+        self.edge2 = LineTrajectory(start=np.array([side_length,0,1]), end=np.array([side_length,side_length,1]), speed=vel)
+        self.edge3 = LineTrajectory(start=np.array([side_length,side_length,1]), end=np.array([0,side_length,1]), speed=vel)
+        self.edge4 = LineTrajectory(start=np.array([0,side_length,1]), end=np.array([0,0,1]), speed=vel)
+        self.traj = CompoundTrajectory([self.edge1, self.edge2, self.edge3, self.edge4])
+        
         self.traj_time_start = None
+        self.trajectory_following = False
 
 
     def define_controller_ros(self):
@@ -110,15 +125,16 @@ class Crazyswarm2ERLCommander(Node):
         if btn:
             if self.traj_time_start is None:
                 self.traj_time_start = time.time()
-                return
-            t = time.time() - self.traj_time_start
-            pos, vel, acc, yaw, omega_yaw = self.traj(t)
-            self.joy_setpoint_callback(pos, vel)
-            if t > self.traj.get_total_time():
-                self.traj_time_start = None
-                self.joy_setpoint_callback(np.array([0,0,1]), np.zeros((3,)))
-                return
-        
+                self.get_logger().info("Starting circle trajectory")
+                self.trajectory_following = True
+            
+            # t = time.time() - self.traj_time_start
+            # pos, vel, acc, yaw, omega_yaw = self.traj(t)
+            # self.joy_setpoint_callback(pos, vel)
+            # if t > self.traj.get_total_time():
+            #     self.traj_time_start = None
+            #     self.joy_setpoint_callback(np.array([0,0,1]), np.zeros((3,)))
+            #     return
         
                                        
     def reload_params(self, btn):
@@ -158,8 +174,8 @@ class Crazyswarm2ERLCommander(Node):
         self.controller.update_setpoint(pos=pos, vel=vel, yaw=yaw)
 
     def joy_setpoint_callback(self, pos, vel):
-        self.setpoint = (pos, vel, 0)
-        # self.get_logger().info(f"Setpoint: {self.setpoint}")
+        self.setpoint = (pos, vel, 0.0)
+        self.get_logger().info(f"Setpoint: {self.setpoint}")
         self.controller.update_setpoint(pos=pos, vel=vel, yaw=0)
     
     def callback(self,msg:PoseStamped):
@@ -176,12 +192,24 @@ class Crazyswarm2ERLCommander(Node):
             self.last_pos = np.array([msg.pose.position.x,msg.pose.position.y,msg.pose.position.z])
             for i in range(5):     # needed to switch to our controller 
                 self.cmd_publisher.publish(control_msg)
+                time.sleep(0.01)
             self.last_time = time.time()
             return
 
         # deltaR = quat2Mat(curQ).T @ quat2Mat(lastQ)
         # delta_euler = mat2Euler(deltaR)
         # ori = delta_euler + last_euler
+        if self.trajectory_following:
+            # update setpoint with trajectory 
+            t = time.time() - self.traj_time_start
+            if t < self.traj.get_total_time():
+                pos, vel, acc, yaw, omega_yaw = self.traj(t)
+                self.joy_setpoint_callback(pos, vel)
+            if t > self.traj.get_total_time():
+                self.joy_setpoint_callback(np.array([0.0,0.0,1.0]), np.zeros((3,)))
+                self.traj.reset()
+                self.trajectory_following = False
+                self.traj_time_start = None
         
         quat = [msg.pose.orientation.w,
                 msg.pose.orientation.x,
@@ -210,10 +238,15 @@ class Crazyswarm2ERLCommander(Node):
  
         self.cmd_publisher.publish(control_msg)
 
-        deg_ori = (180.0/np.pi)*np.array(ori)
-        # self.get_logger().info(f'Published {control_msg} at time {time.time()}')
-        # self.get_logger().info(f'cmd (pitch, roll): ({pitch:.2f} {roll:.2f}, {yaw_rate:.2f}) \t euler: ({deg_ori[0]:.2f} {deg_ori[1]:.2f} {deg_ori[2]:.2f})')
-        self.get_logger().info(f'pos: {curr_pos} vel: {curr_vel} thrust: {cf_thrust}')
+        goal_msg = PoseStamped()
+        goal_msg.header.frame_id = msg.header.frame_id
+        goal_msg.header.stamp = self.get_clock().now().to_msg()
+        goal_msg.pose.position.x = self.setpoint[0][0]
+        goal_msg.pose.position.y = self.setpoint[0][1]
+        goal_msg.pose.position.z = self.setpoint[0][2]
+
+        self.goal_pose_publisher.publish(goal_msg)
+
         self.last_pos = curr_pos
         self.last_thrust = float(cf_thrust) / self.N2cfThrust_conv_factor
         self.last_time = time.time()

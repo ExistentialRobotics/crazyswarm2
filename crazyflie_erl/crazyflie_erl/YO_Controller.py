@@ -95,5 +95,5 @@ class YO_Controller:
         thrust = x.T + yank * dt 
         roll = x.r + w_x * dt 
         pitch = x.p + w_y * dt
-        
+        w_z = 0 #TODO investigate, ignore yaw rate for now
         return np.array([roll, pitch, w_z, thrust])

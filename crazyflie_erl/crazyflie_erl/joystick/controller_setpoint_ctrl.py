@@ -20,6 +20,7 @@ class JoySetpointControl:
         handler.register_gated_axis_callback(self.setpoint_callback, (AXES_MAP["RStickX"], AXES_MAP["RStickY"], AXES_MAP["LStickY"]), (BUTTON_MAP["LB"],))
         handler.register_callback(self.reset_setpoint, buttons=(BUTTON_MAP["RB"],))
         handler.register_callback(self.toggle_goal_vel, buttons=(BUTTON_MAP["A"],))
+        handler.register_full_dpad_callback(self.dpad_callback)
         self.SCALE_FACTOR = 0.5
         self.last_time = None
         self.use_goal_vel = False
@@ -40,6 +41,25 @@ class JoySetpointControl:
         if button: # toggle on rising edge
             self.use_goal_vel = not self.use_goal_vel
         print(f"Use goal vel: {self.use_goal_vel}")
+
+    def dpad_callback(self, up, down, left, right):
+        #dpad will move the setpoint on xy plane
+        step = 0.25
+        self.node.get_logger().info("DPAD: up: {}, down: {}, left: {}, right: {}".format(up, down, left, right))
+        #for now make right dpad move in the -y direction, left dpad move in the +y direction, up dpad move in the +x direction, down dpad move in the -x direction
+        if up:
+            self.setpoint[0] += step
+        elif down:
+            self.setpoint[0] -= step
+        elif left:
+            self.setpoint[1] += step
+        elif right:
+            self.setpoint[1] -= step
+        
+        self.goal_vel = np.array([0,0,0])
+
+        if self.callback is not None:
+            self.callback(self.setpoint, self.goal_vel)
 
     def get_current_goal(self):
         return self.setpoint, self.goal_vel

@@ -1,7 +1,7 @@
 CS2ERLCommander_node:
   ros__parameters:
     G: 9.81
-    M: .027
+    M: .035
     MAX_THRUST: 0.3783857
     CTRL_TIMESTEP: 0.01
     CF_HOVER_THRUST: 42000
