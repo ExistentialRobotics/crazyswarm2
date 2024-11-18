@@ -3,91 +3,7 @@ from control import LQRYankOmegaController, YankOmegaController
 from utils.env_builder import Environment
 import numpy as np
 import rclpy
-
-class YOState:
-    
-    def __init__(self, r,p,y,T,vx,vy,vz,px,py,pz):
-        self.r = r
-        self.p = p
-        self.y = y
-        self.T = T
-        self.vx = vx
-        self.vy = vy
-        self.vz = vz
-        self.px = px
-        self.py = py
-        self.pz = pz
-
-    
-    def set_from_idx(self, idx, value):
-        if idx == 0:
-            self.r = value
-        elif idx == 1:
-            self.p = value
-        elif idx == 2:
-            self.y = value
-        elif idx == 3:
-            self.T = value
-        elif idx == 4:
-            self.vx = value
-        elif idx == 5:
-            self.vy = value
-        elif idx == 6:
-            self.vz = value
-        elif idx == 7:
-            self.px = value
-        elif idx == 8:
-            self.py = value
-        elif idx == 9:
-            self.pz = value
-        else:
-            raise ValueError("Index out of bounds")
-
-    def pos(self):
-        return np.array([self.px, self.py, self.pz])
-    
-    def rpy(self):
-        return np.array([self.r, self.p, self.y])
-    
-    def vel(self):
-        return np.array([self.vx, self.vy, self.vz])
-    
-    def set_pos(self, pos):
-        self.px = pos[0]
-        self.py = pos[1]
-        self.pz = pos[2]
-    
-    def set_rpy(self, rpy):
-        self.r = rpy[0]
-        self.p = rpy[1]
-        self.y = rpy[2]
-    
-    def set_vel(self, vel):
-        self.vx = vel[0]
-        self.vy = vel[1]
-        self.vz = vel[2]
-    
-    def __setitem__(self, index, value):
-        self.set_from_idx(index, value)
-    
-    def __getitem__(self, index):
-        return self.get_state_vec()[index]
-
-    def copy(self):
-        return YOState(self.r, self.p, self.y, self.T, self.vx, self.vy, self.vz, self.px, self.py, self.pz)
-    
-    def get_state_vec(self):
-        return np.array([self.r,
-                         self.p,
-                         self.y,
-                         self.T,
-                         self.vx,
-                         self.vy,
-                         self.vz,
-                         self.px,
-                         self.py,
-                         self.pz])
-
+from control import YOState
 
 class YO_Controller:
 
@@ -103,6 +19,8 @@ class YO_Controller:
         yo_ctrl = YankOmegaController(env)
 
         Q,R = self.update_lqr_params(params)
+        self.Q = Q
+        self.R = R
         self.lqr = LQRYankOmegaController(self.env, self.yo_model, yo_ctrl, Q=Q, R=R)
         self.N2cfThrust_conv_factor = N2cfThrust_conv_factor
         print(Q)
@@ -132,8 +50,9 @@ class YO_Controller:
                 1/(lqr_max_thrust**2), 1 / (max_vel_error ** 2), 1 / (max_vel_error ** 2), 1 / (max_vel_error ** 2),
                 1 / (max_pos_error ** 2), 1 / (max_pos_error ** 2), 1 / (max_pos_error ** 2)]
         Q = np.diag(qflat)
-
         if apply:
+            self.Q = Q
+            self.R = R
             self.lqr.Q = Q
             self.lqr.R = R
             self.lqr.compute_gain_matrix()

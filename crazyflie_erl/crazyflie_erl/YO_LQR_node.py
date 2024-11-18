@@ -3,7 +3,8 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist, PoseStamped
 from motion_capture_tracking_interfaces.msg import NamedPoseArray
-from YO_Controller import YOState, YO_Controller
+from YO_Controller import YO_Controller
+from control import YOState
 import time
 import numpy as np
 import yaml
@@ -37,7 +38,7 @@ class Crazyswarm2ERLCommander(Node):
         self.joy_handler.register_callback(self.land, buttons=(BUTTON_MAP["Y"],))
         self.joy_handler.register_callback(self.reload_params, buttons=(BUTTON_MAP["Squares"],))
         self.joy_handler.register_callback(self.track_circle_traj, buttons=(BUTTON_MAP["X"],))
-        self.joy_handler.register_callback(self.start_recording, buttons=(BUTTON_MAP["A"],))
+        self.joy_handler.register_callback(self.toggle_recording, buttons=(BUTTON_MAP["A"],))
         self.get_logger().info("Created Xbox Handler")
         
 
@@ -69,7 +70,7 @@ class Crazyswarm2ERLCommander(Node):
 
         self.record_transitions = False
         self.transition_data = []
-        self.fed_learning = FederatedLearning([self.controller.lin_model], self.controller.env, num_drones=1)
+        self.fed_learning = FederatedLearning(self.controller.env, [self.controller.yo_model], self.controller.Q, self.controller.R , num_drones=1)
 
 
     def define_controller_ros(self):
@@ -273,13 +274,14 @@ class Crazyswarm2ERLCommander(Node):
         self.goal_pose_publisher.publish(goal_msg)
 
         if self.record_transitions:
-            u = self.controller.cf_input_to_u(command)
+            u = self.controller.cf_input_to_u(command, state, dt)
             # test how long the update step takes
             start_time = time.time()
             phis, etp1 = self.fed_learning.update([state], [self.fed_learning.make_desired_state(pos=self.setpoint[0], vel=self.setpoint[1], yaw=self.setpoint[2])], [u])
             end_time = time.time()
             self.get_logger().info(f"Update took {(end_time-start_time):.5f} seconds")
-            self.transition_data.append((state, u, phis, etp1))
+            if phis is not None and etp1 is not None:
+                self.transition_data.append((state, u, phis, etp1))
 
         self.last_pos = curr_pos
         self.last_thrust = float(cf_thrust) / self.N2cfThrust_conv_factor
