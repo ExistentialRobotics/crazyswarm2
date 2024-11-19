@@ -123,7 +123,7 @@ def generate_launch_description():
         DeclareLaunchArgument('debug', default_value='False'),
         DeclareLaunchArgument('rviz', default_value='False'),
         DeclareLaunchArgument('gui', default_value='False'),
-        DeclareLaunchArgument('teleop', default_value='True'),
+        DeclareLaunchArgument('teleop', default_value='False'),
         DeclareLaunchArgument('mocap', default_value='True'),
         DeclareLaunchArgument('teleop_yaml_file', default_value=''),
         OpaqueFunction(function=parse_yaml),
@@ -146,7 +146,7 @@ def generate_launch_description():
             parameters= [PythonExpression(["'" + telop_yaml_path +"' if '", LaunchConfiguration('teleop_yaml_file'), "' == '' else '", LaunchConfiguration('teleop_yaml_file'), "'"])],
         ),
         Node(
-            condition=LaunchConfigurationEquals('teleop', 'True'),
+            #condition=LaunchConfigurationEquals('teleop', 'True'),
             package='joy',
             executable='joy_node',
             name='joy_node' # by default id=0

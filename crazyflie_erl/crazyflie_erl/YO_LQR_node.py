@@ -163,7 +163,7 @@ class Crazyswarm2ERLCommander(Node):
             self.get_logger().info(self.fed_learning.theta_str())
             self.fed_learning.save_theta()
             #save the transition data to a file
-            np.save("transition_data.npy", self.transition_data)
+            np.save("transition_data.npy", np.array(self.transition_data))
             
 
 
@@ -281,7 +281,7 @@ class Crazyswarm2ERLCommander(Node):
             end_time = time.time()
             self.get_logger().info(f"Update took {(end_time-start_time):.5f} seconds")
             if phis is not None and etp1 is not None:
-                self.transition_data.append((state, u, phis, etp1))
+                self.transition_data.append(np.hstack([state.get_state_vec().flatten(), np.array(u).flatten(), np.array(phis).flatten(), np.array(etp1).flatten()]))
 
         self.last_pos = curr_pos
         self.last_thrust = float(cf_thrust) / self.N2cfThrust_conv_factor
